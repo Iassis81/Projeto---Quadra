@@ -10,13 +10,13 @@ import { getFirestore } from 'firebase/firestore';
 
 // CORREÇÃO: CHAMADA DA FUNÇÃO DE AUTENTICAÇÃO AGORA ESTÁ PRESENTE
 // ************************************
-signInAnonymously(auth).then(() => {
+/*signInAnonymously(auth).then(() => {
   console.log("SUCESSO: Usuário logado anonimamente. O Firestore deve funcionar.");
 }).catch((error) => {
   // Isso deve alertar se o Firebase Auth não estiver habilitado para seu projeto.
   console.error("ERRO CRÍTICO: Não foi possível logar anonimamente. Verifique se o Firebase Auth (Login Anônimo) está habilitado.", error);
 });
-
+*/
 // 👉 PASSO A PASSO:
 // 1. Vá em https://console.firebase.google.com
 // 2. Crie um projeto novo (ou use um existente)
