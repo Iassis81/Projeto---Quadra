@@ -24,8 +24,9 @@ export default function SpacesListScreen({ navigation }) {
     setCarregando(false);
   }, []);
 
-  // useFocusEffect recarrega a lista toda vez que essa tela volta a
-  // ficar visível — por exemplo, ao voltar da tela "Cadastrar novo espaço".
+  // useFocusEffect (em vez de useEffect simples) recarrega a lista toda vez
+  // que essa tela volta a ficar visível — por exemplo, quando você volta
+  // da tela "Cadastrar novo espaço" depois de salvar.
   useFocusEffect(
     useCallback(() => {
       carregarEspacos();
@@ -46,6 +47,9 @@ export default function SpacesListScreen({ navigation }) {
         onChangeText={handleBuscar}
       />
 
+      {/* 👇 A "porta de entrada" que faltava para a tela SpaceFormScreen.
+          Sem esse botão, a rota "NovoEspaco" existia no App.js mas
+          ninguém conseguia navegar até ela. */}
       <TouchableOpacity
         style={styles.botaoNovo}
         onPress={() => navigation.navigate('NovoEspaco')}
