@@ -10,7 +10,7 @@ import { getFirestore } from 'firebase/firestore';
 /*
 // CORREÇÃO: CHAMADA DA FUNÇÃO DE AUTENTICAÇÃO AGORA ESTÁ PRESENTE
 // ************************************
-signInAnonymously(auth).then(() => {
+/*signInAnonymously(auth).then(() => {
   console.log("SUCESSO: Usuário logado anonimamente. O Firestore deve funcionar.");
 }).catch((error) => {
   // Isso deve alertar se o Firebase Auth não estiver habilitado para seu projeto.

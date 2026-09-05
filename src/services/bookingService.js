@@ -15,6 +15,9 @@ import {
   getDocs,
   query,
   where,
+  doc,
+  updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
@@ -30,6 +33,18 @@ function paraMinutos(horaTexto) {
 // um terminar antes do outro começar. Em qualquer outro caso, há conflito.
 function horariosSeSobrepoe(inicioA, fimA, inicioB, fimB) {
   return inicioA < fimB && inicioB < fimA;
+}
+
+// Verifica se uma combinação de data + horário já ficou no passado,
+// comparando com o momento exato em que a função é chamada (new Date()).
+// Usada tanto na tela (bloqueio visual) quanto aqui no service (bloqueio
+// de segurança, caso alguém tente pular a interface).
+export function horarioJaPassou(data, horario) {
+  const agora = new Date();
+  const [ano, mes, dia] = data.split('-').map(Number);
+  const [hora, minuto] = horario.split(':').map(Number);
+  const momentoDoSlot = new Date(ano, mes - 1, dia, hora, minuto);
+  return momentoDoSlot < agora;
 }
 
 // Busca as reservas de um espaço em uma data específica (ignora as canceladas).
@@ -67,6 +82,17 @@ export async function criarReserva({ spaceId, userId, data, horaInicio, horaFim 
     throw new Error('O horário de início precisa ser antes do horário de fim.');
   }
 
+  // Validação de segurança: mesmo que alguém consiga chamar essa função
+  // ignorando a tela (ex: direto pelo console), o Firestore nunca recebe
+  // uma reserva para um horário que já passou.
+  if (horarioJaPassou(data, horaInicio)) {
+    throw new Error('Não é possível reservar um horário que já passou.');
+  }
+
+  // Busca as reservas JÁ EXISTENTES agora, na hora exata da confirmação —
+  // não reaproveita nenhuma lista antiga da tela. Isso garante que, se
+  // outra pessoa reservou esse mesmo horário um segundo atrás, o conflito
+  // é pego aqui, e não é preciso confiar na lista que a tela carregou antes.
   const reservasDoDia = await buscarReservasDoDia(spaceId, data);
 
   if (existeConflito(reservasDoDia, horaInicio, horaFim)) {
@@ -88,4 +114,33 @@ export async function listarReservasDoUsuario(userId) {
   const q = query(reservationsRef, where('userId', '==', userId));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+// Os únicos status válidos no sistema. Ter essa lista num só lugar evita
+// erro de digitação (ex: escrever "cancelada" com c minúsculo em algum canto).
+export const STATUS_RESERVA = {
+  PENDENTE: 'Pendente',
+  CONFIRMADA: 'Confirmada',
+  CANCELADA: 'Cancelada',
+};
+
+// Atualiza o status de uma reserva já existente.
+// reservaId é o "id" do documento (o mesmo que vem em cada item retornado
+// por listarReservasDoUsuario/buscarReservasDoDia).
+export async function atualizarStatusReserva(reservaId, novoStatus) {
+  const valoresValidos = Object.values(STATUS_RESERVA);
+  if (!valoresValidos.includes(novoStatus)) {
+    throw new Error(`Status inválido: ${novoStatus}`);
+  }
+  await updateDoc(doc(db, 'reservations', reservaId), { status: novoStatus });
+}
+
+// Cancela uma reserva EXCLUINDO o documento do Firestore (em vez de só
+// marcar o status como "Cancelada"). Isso é importante: buscarReservasDoDia
+// já ignora reservas com status "Cancelada", mas excluir de verdade é mais
+// direto e garante que o horário liberado nunca conte como ocupado em
+// nenhuma consulta futura, mesmo que algum código novo esqueça de filtrar
+// por status.
+export async function cancelarReserva(reservaId) {
+  await deleteDoc(doc(db, 'reservations', reservaId));
 }

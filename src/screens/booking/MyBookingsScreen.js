@@ -1,13 +1,22 @@
 // src/screens/booking/MyBookingsScreen.js
 // [Integrante 3 - Agendamento]
 //
-// Lista as reservas do usuário logado. De novo, usamos useAuth() (Integrante 1)
-// para saber QUEM está logado, e bookingService (Integrante 3) para buscar os dados.
+// Lista as reservas do usuário logado E permite mudar o status delas
+// (Pendente -> Confirmada, ou qualquer status -> Cancelada).
+//
+// De novo, usamos useAuth() (Integrante 1) para saber QUEM está logado,
+// e bookingService (Integrante 3) para buscar/atualizar os dados.
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
-import { listarReservasDoUsuario } from '../../services/bookingService';
+import {
+  listarReservasDoUsuario,
+  atualizarStatusReserva,
+  cancelarReserva,
+  STATUS_RESERVA,
+} from '../../services/bookingService';
 
 const CORES_STATUS = {
   Pendente: '#f59e0b',
@@ -18,34 +27,135 @@ const CORES_STATUS = {
 export default function MyBookingsScreen() {
   const { usuario } = useAuth();
   const [reservas, setReservas] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  // Guarda o id da reserva que está sendo atualizada no momento, para
+  // desabilitar só o botão dela (e não travar a tela inteira) enquanto
+  // a atualização acontece no Firestore.
+  const [atualizandoId, setAtualizandoId] = useState(null);
 
   const carregar = useCallback(async () => {
-    if (usuario) {
-      const lista = await listarReservasDoUsuario(usuario.uid);
-      setReservas(lista);
-    }
+    if (!usuario) return;
+    setCarregando(true);
+    const lista = await listarReservasDoUsuario(usuario.uid);
+    setReservas(lista);
+    setCarregando(false);
   }, [usuario]);
 
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
+  // useFocusEffect recarrega a lista toda vez que esta tela volta a ficar
+  // visível — por exemplo, depois de criar uma nova reserva na tela de
+  // Agendamento e voltar para cá pela aba.
+  useFocusEffect(
+    useCallback(() => {
+      carregar();
+    }, [carregar])
+  );
+
+  async function handleMudarStatus(reservaId, novoStatus) {
+    setAtualizandoId(reservaId);
+    try {
+      await atualizarStatusReserva(reservaId, novoStatus);
+      // Atualiza o item na lista local sem precisar buscar tudo de novo
+      // no Firestore — deixa a tela mais rápida e responsiva.
+      setReservas((atual) =>
+        atual.map((reserva) =>
+          reserva.id === reservaId ? { ...reserva, status: novoStatus } : reserva
+        )
+      );
+    } catch (erro) {
+      Alert.alert('Erro', 'Não foi possível atualizar o status da reserva.');
+    } finally {
+      setAtualizandoId(null);
+    }
+  }
+
+  // Diferente de handleMudarStatus: aqui a reserva é EXCLUÍDA de verdade
+  // do Firestore (cancelarReserva usa deleteDoc), não só marcada como
+  // "Cancelada". Isso garante que o horário fique liberado imediatamente
+  // para qualquer pessoa, inclusive na tela de agendamento do Integrante 3.
+  async function handleCancelar(reservaId) {
+    setAtualizandoId(reservaId);
+    try {
+      await cancelarReserva(reservaId);
+      // Remove o item da lista local na hora — ele não existe mais no banco.
+      setReservas((atual) => atual.filter((reserva) => reserva.id !== reservaId));
+    } catch (erro) {
+      Alert.alert('Erro', 'Não foi possível cancelar a reserva.');
+    } finally {
+      setAtualizandoId(null);
+    }
+  }
+
+  function confirmarCancelamento(reservaId) {
+    Alert.alert(
+      'Cancelar reserva',
+      'Tem certeza que deseja cancelar esta reserva? Essa ação não pode ser desfeita.',
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: 'Cancelar reserva',
+          style: 'destructive',
+          onPress: () => handleCancelar(reservaId),
+        },
+      ]
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.titulo}>Minhas reservas</Text>
-      <FlatList
-        data={reservas}
-        keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text style={styles.vazio}>Você ainda não tem reservas.</Text>}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.data}>{item.data} · {item.horaInicio} às {item.horaFim}</Text>
-            <Text style={[styles.status, { color: CORES_STATUS[item.status] }]}>
-              {item.status}
-            </Text>
-          </View>
-        )}
-      />
+
+      {carregando ? (
+        <Text style={styles.vazio}>Carregando...</Text>
+      ) : (
+        <FlatList
+          data={reservas}
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={<Text style={styles.vazio}>Você ainda não tem reservas.</Text>}
+          renderItem={({ item }) => {
+            const estaAtualizando = atualizandoId === item.id;
+            return (
+              <View style={styles.card}>
+                <Text style={styles.data}>
+                  {item.data} · {item.horaInicio} às {item.horaFim}
+                </Text>
+                <Text style={[styles.status, { color: CORES_STATUS[item.status] }]}>
+                  {item.status}
+                </Text>
+
+                {/* Os botões de ação mudam de acordo com o status atual:
+                    - Pendente: pode Confirmar ou Cancelar
+                    - Confirmada: só pode Cancelar
+                    - Cancelada: nenhuma ação (já é o status final) */}
+                <View style={styles.acoes}>
+                  {item.status === STATUS_RESERVA.PENDENTE && (
+                    <TouchableOpacity
+                      style={[styles.botao, styles.botaoConfirmar]}
+                      disabled={estaAtualizando}
+                      onPress={() => handleMudarStatus(item.id, STATUS_RESERVA.CONFIRMADA)}
+                    >
+                      <Text style={styles.botaoTexto}>
+                        {estaAtualizando ? 'Atualizando...' : 'Confirmar'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {item.status !== STATUS_RESERVA.CANCELADA && (
+                    <TouchableOpacity
+                      style={[styles.botao, styles.botaoCancelar]}
+                      disabled={estaAtualizando}
+                      onPress={() => confirmarCancelamento(item.id)}
+                    >
+                      <Text style={styles.botaoTexto}>
+                        {estaAtualizando ? 'Atualizando...' : 'Cancelar'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -63,4 +173,14 @@ const styles = StyleSheet.create({
   },
   data: { fontSize: 15 },
   status: { fontWeight: 'bold', marginTop: 4 },
+  acoes: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  botao: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  botaoConfirmar: { backgroundColor: '#16a34a' },
+  botaoCancelar: { backgroundColor: '#dc2626' },
+  botaoTexto: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
 });
