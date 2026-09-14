@@ -134,3 +134,7 @@ Escaneie o QR code com o app **Expo Go** no seu celular.
    (mockados) enquanto o login não está pronto.
 4. No fim, todos se juntam no `App.js` para plugar a navegação entre as telas.
 # Projeto---Quadra
+
+
+
+Dev_Jhon_web
