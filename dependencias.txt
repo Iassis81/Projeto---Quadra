@@ -1,0 +1,13 @@
+Dependências necessárias (instalar com npm install <nome>):
+
+firebase
+@react-navigation/native
+@react-navigation/native-stack
+@react-navigation/bottom-tabs
+react-native-screens
+react-native-safe-area-context
+@react-native-async-storage/async-storage
+react-native-calendars
+
+Comando único:
+npm install firebase @react-navigation/native @react-navigation/native-stack @react-navigation/bottom-tabs react-native-screens react-native-safe-area-context @react-native-async-storage/async-storage react-native-calendars
